@@ -6,6 +6,8 @@ import re
 from datetime import datetime
 import json
 import dateutil.parser
+import sys
+import traceback
 
 sc = SparkContext()
 
@@ -16,6 +18,7 @@ spark = SparkSession \
         .getOrCreate()
 
 filePath = '/user/hm74/NYCOpenData'
+# filePath = '/user/mw4086/NYCOpenData-Sample'
 
 fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
 fileStatusList = fs.listStatus(spark._jvm.org.apache.hadoop.fs.Path(filePath))
@@ -31,10 +34,17 @@ def loadData(fileName):
     data = file.zipWithIndex().filter(lambda tup: tup[1] > 0).map(lambda x: x[0]).map(lambda x: x.split('\t'))
     return header, data, dataFrame
 
+def getValueByIndex(x, i):
+    if i < len(x):
+        return x[i]
+    else:
+        return ''
+
 def addDataType(dataType, x):
-    integer_expr = r'^[+-]?[1-9]\d*$'
-    real_expr1 = r'^[+-]?\d+\.\d*$'
-    real_expr2 = r'^[+-]?\d*\.\d+$'
+    integer_expr = r'^[+-]?([1-9]\d*|0)$'
+    integer_expr_comma = r'^[+-]?[1-9]\d{0,2}(,\d{3})*$'
+    real_expr = r'[+-]?(\d+\.\d*|\d*\.\d+)$'
+    real_expr_comma = r'^[+-]?[1-9]\d{0s,2}(,\d{3})*\.\d*$'
     if x.strip() == '':
         return ('TEXT', x, len(x))
     elif dataType == 'INTEGER(LONG)':
@@ -44,9 +54,13 @@ def addDataType(dataType, x):
     elif dataType == 'DATE/TIME':
         return (dataType, x[1], datetime(x[1]))
     elif (re.match(integer_expr, x)):
-            return ('INTEGER(LONG)', x, int(x))
-    elif (re.match(real_expr1, x) or re.match(real_expr2, x)):
+        return ('INTEGER(LONG)', x, int(x))
+    elif (re.match(integer_expr_comma, x)):
+        return ('INTEGER(LONG)', x, int(x.replace(',', '')))
+    elif (re.match(real_expr, x)):
         return ('REAL', x, float(x))
+    elif (re.match(real_expr_comma, x)):
+        return ('REAL', x, float(x.replace(',', '')))
     else:
         try:
             new_x = dateutil.parser.parse(x, default = datetime(1900, 1, 1, 0, 0, 0, 000000))
@@ -73,7 +87,7 @@ def processColumn(header, data, dataFrame):
         columnDict = {}
         columnName = header[i]
         columnDict['column_name'] = columnName
-        columnValue = data.map(lambda x: x[i])
+        columnValue = data.map(lambda x: getValueByIndex(x, i))
         nonEmptyCellNumber = columnValue.filter(lambda x: x.strip() != '').count()
         columnDict['number_non_empty_cells'] = nonEmptyCellNumber
         emptyCellNumber = columnValue.filter(lambda x: x.strip() == '').count()
@@ -114,12 +128,9 @@ def processColumn(header, data, dataFrame):
             else:
                 maxVal = typeValue.max()
                 minVal = typeValue.min()
-                if columnType == 'DATE/TIME':
-                    dataTypeDict['max_value'] = typeRow.filter(lambda x: x[2] == maxVal).map(lambda x: x[1]).max()
-                    dataTypeDict['min_value'] = typeRow.filter(lambda x: x[2] == minVal).map(lambda x: x[1]).min()
-                else:
-                    dataTypeDict['max_value'] = maxVal
-                    dataTypeDict['min_value'] = minVal
+                dataTypeDict['max_value'] = typeRow.filter(lambda x: x[2] == maxVal).map(lambda x: x[1]).max()
+                dataTypeDict['min_value'] = typeRow.filter(lambda x: x[2] == minVal).map(lambda x: x[1]).min()
+                if columnType != 'DATE/TIME':
                     dataTypeDict['mean'] = typeValue.mean()
                     dataTypeDict['stddev'] = typeValue.stdev()
             dataTypeList.append(dataTypeDict)
@@ -150,7 +161,6 @@ for k, fileName in enumerate(fileNameList):
     print('++++++++++++++++++++++++++++++++++++++',k)
 datetimef.close()
 '''
-failFileName = []
 for file in fileInfoList:
     try:
         fileName = file[0]
@@ -160,17 +170,24 @@ for file in fileInfoList:
         columnList, tableKeyList = processColumn(header, data, dataFrame)
         dataDict['columns'] = columnList
         dataDict['key_column_candidates'] = tableKeyList
-        print(dataDict)
         writeToJson(fileName, dataDict)
         print(fileName)
-    except:
-        failFileName.append(fileName)
+    except Exception as ex:
+        # Get current system exception
+        ex_type, ex_value, ex_traceback = sys.exc_info()
+        # Extract unformatter stack traces as tuples
+        trace_back = traceback.extract_tb(ex_traceback)
+        # Format stacktrace
+        stack_trace = list()
+        for trace in trace_back:
+            stack_trace.append(
+                "File : %s , Line : %d, Func.Name : %s, Message : %s" % (trace[0], trace[1], trace[2], trace[3]))
+        failF = open('failFile.txt', 'w')
+        failF.write("Fail %s----------------------------------------\n" % fileName)
+        failF.write("Exception type : %s \n" % ex_type.__name__)
+        failF.write("Exception message : %s \n" % ex_value)
+        failF.write("Stack trace : %s \n" % stack_trace)
+        failF.close()
         pass
-    
-if len(failFileName) > 0:
-    failF = open('failFile.txt', 'w')
-    for fileN in failFileName:
-        failF.write('%s\n' % fileN)
-    failF.close()
 
 sc.stop()
