@@ -15,12 +15,14 @@ spark = SparkSession \
         .config("spark.some.config.option", "some-value") \
         .getOrCreate()
 
-filePath = '/user/mw4086/NYCOpenData-Sample'
-# filePath = '/user/hm74/NYCOpenData'
+filePath = '/user/hm74/NYCOpenData'
 
 fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
 fileStatusList = fs.listStatus(spark._jvm.org.apache.hadoop.fs.Path(filePath))
-fileNameList = [fileStatus.getPath().getName() for fileStatus in fileStatusList]
+fileInfoList = []
+for fileStatus in fileStatusList:
+    fileInfoList.append((fileStatus.getPath().getName(), fileStatus.getLen()))
+fileInfoList.sort(key = lambda s: s[1])
 
 def loadData(fileName):
     dataFrame = spark.read.csv(filePath + '/' + fileName, header='true', inferSchema='true', sep='\t')
@@ -35,23 +37,22 @@ def addDataType(dataType, x):
     real_expr2 = r'^[+-]?\d*\.\d+$'
     if x.strip() == '':
         return ('TEXT', x, len(x))
-    if dataType == 'INTEGER(LONG)':
+    elif dataType == 'INTEGER(LONG)':
         return (dataType, x, int(x))
     elif dataType == 'REAL':
         return (dataType, x, float(x))
     elif dataType == 'DATE/TIME':
         return (dataType, x[1], datetime(x[1]))
-    else:
-        if (re.match(integer_expr, x)):
+    elif (re.match(integer_expr, x)):
             return ('INTEGER(LONG)', x, int(x))
-        elif (re.match(real_expr1, x) or re.match(real_expr2, x)):
-            return ('REAL', x, float(x))
-        else:
-            try:
-                new_x = dateutil.parser.parse(x, default = datetime(1900, 1, 1, 0, 0, 0, 000000))
-                return ('DATE/TIME', x, new_x)
-            except ValueError:
-                pass
+    elif (re.match(real_expr1, x) or re.match(real_expr2, x)):
+        return ('REAL', x, float(x))
+    else:
+        try:
+            new_x = dateutil.parser.parse(x, default = datetime(1900, 1, 1, 0, 0, 0, 000000))
+            return ('DATE/TIME', x, new_x)
+        except ValueError:
+            pass
         try:
             new_x = datetime.strptime(x, '%I%MA')
             return ('DATE/TIME', x, new_x)
@@ -111,9 +112,14 @@ def processColumn(header, data, dataFrame):
                 dataTypeDict['longest_values'] = list(map(lambda x: x[1], top5LongestText))
                 dataTypeDict['average_length'] = avgLength
             else:
-                dataTypeDict['max_value'] = typeValue.max()
-                dataTypeDict['min_value'] = typeValue.min()
-                if columnType == 'INTEGER(LONG)' or columnType == 'REAL':
+                maxVal = typeValue.max()
+                minVal = typeValue.min()
+                if columnType == 'DATE/TIME':
+                    dataTypeDict['max_value'] = typeRow.filter(lambda x: x[2] == maxVal).map(lambda x: x[1]).max()
+                    dataTypeDict['min_value'] = typeRow.filter(lambda x: x[2] == minVal).map(lambda x: x[1]).min()
+                else:
+                    dataTypeDict['max_value'] = maxVal
+                    dataTypeDict['min_value'] = minVal
                     dataTypeDict['mean'] = typeValue.mean()
                     dataTypeDict['stddev'] = typeValue.stdev()
             dataTypeList.append(dataTypeDict)
@@ -145,18 +151,22 @@ for k, fileName in enumerate(fileNameList):
 datetimef.close()
 '''
 failFileName = []
-for fileName in fileNameList:
+for file in fileInfoList:
     try:
+        fileName = file[0]
         dataDict = {}
         dataDict['dataset_name'] = fileName
         header, data, dataFrame = loadData(fileName)
         columnList, tableKeyList = processColumn(header, data, dataFrame)
         dataDict['columns'] = columnList
         dataDict['key_column_candidates'] = tableKeyList
+        print(dataDict)
         writeToJson(fileName, dataDict)
         print(fileName)
     except:
         failFileName.append(fileName)
+        pass
+    
 if len(failFileName) > 0:
     failF = open('failFile.txt', 'w')
     for fileN in failFileName:
