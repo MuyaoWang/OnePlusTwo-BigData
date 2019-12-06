@@ -1,10 +1,11 @@
 import pyspark
 from pyspark import SparkContext
 from pyspark.sql import SparkSession
-from pyspark.sql.types import IntegerType, DoubleType, DateType, StringType, LongType, TimestampType, BooleanType
+from pyspark.sql.types import IntegerType, DoubleType, DecimalType, DateType, StringType, LongType, TimestampType, BooleanType
 import re
 from datetime import datetime
 import json
+
 import dateutil.parser
 import sys
 import traceback
@@ -18,41 +19,48 @@ spark = SparkSession \
         .getOrCreate()
 
 filePath = '/user/hm74/NYCOpenData'
-# filePath = '/user/mw4086/NYCOpenData-Sample'
-
 fs = spark._jvm.org.apache.hadoop.fs.FileSystem.get(spark._jsc.hadoopConfiguration())
 fileStatusList = fs.listStatus(spark._jvm.org.apache.hadoop.fs.Path(filePath))
 fileInfoList = []
 for fileStatus in fileStatusList:
     fileInfoList.append((fileStatus.getPath().getName(), fileStatus.getLen()))
+
+
+fileNameList = [fileInfo[0] for fileInfo in fileInfoList]
+datasetInfoIndex = fileNameList.index('datasets.tsv')
+del fileInfoList[datasetInfoIndex]
 fileInfoList.sort(key = lambda s: s[1])
 
 def loadData(fileName):
-    dataFrame = spark.read.csv(filePath + '/' + fileName, header='true', inferSchema='true', sep='\t')
-    file = sc.textFile(filePath + '/' + fileName)
-    header = file.first().split('\t')
-    data = file.zipWithIndex().filter(lambda tup: tup[1] > 0).map(lambda x: x[0]).map(lambda x: x.split('\t'))
+    dataFrame = spark.read.csv(filePath + '/' + fileName, header='true', inferSchema='true', multiLine='true', sep='\t')
+    header = dataFrame.columns
+    data = dataFrame.rdd.map(tuple)
+    # file = sc.textFile(filePath + '/' + fileName)
+    # header = file.first().split('\t')
+    # data = file.zipWithIndex().filter(lambda tup: tup[1] > 0).map(lambda x: x[0]).map(lambda x: x.split('\t'))
     return header, data, dataFrame
 
+
 def getValueByIndex(x, i):
-    if i < len(x):
-        return x[i]
-    else:
+    if i >= len(x) or x[i] is None:
         return ''
+    else:
+        return str(x[i])
+
 
 def addDataType(dataType, x):
     integer_expr = r'^[+-]?([1-9]\d*|0)$'
     integer_expr_comma = r'^[+-]?[1-9]\d{0,2}(,\d{3})*$'
     real_expr = r'[+-]?(\d+\.\d*|\d*\.\d+)$'
     real_expr_comma = r'^[+-]?[1-9]\d{0s,2}(,\d{3})*\.\d*$'
-    if x.strip() == '':
-        return ('TEXT', x, len(x))
+    if x == None or x.strip() == '':
+        return ('TEXT', x, 0)
     elif dataType == 'INTEGER(LONG)':
         return (dataType, x, int(x))
     elif dataType == 'REAL':
         return (dataType, x, float(x))
     elif dataType == 'DATE/TIME':
-        return (dataType, x[1], datetime(x[1]))
+        return (dataType, x, dateutil.parser.parse(x, ignoretz = True, default = datetime(1900, 1, 1, 0, 0, 0, 000000)))
     elif (re.match(integer_expr, x)):
         return ('INTEGER(LONG)', x, int(x))
     elif (re.match(integer_expr_comma, x)):
@@ -63,21 +71,17 @@ def addDataType(dataType, x):
         return ('REAL', x, float(x.replace(',', '')))
     else:
         try:
-            new_x = dateutil.parser.parse(x, default = datetime(1900, 1, 1, 0, 0, 0, 000000))
+            new_x = dateutil.parser.parse(x, ignoretz = True, default = datetime(1900, 1, 1, 0, 0, 0, 000000))
             return ('DATE/TIME', x, new_x)
-        except ValueError:
+        except:
             pass
         try:
-            new_x = datetime.strptime(x, '%I%MA')
+            new_x = datetime.strptime(x+'M', '%I%M%p')
             return ('DATE/TIME', x, new_x)
-        except ValueError:
-            pass
-        try:
-            new_x = datetime.strptime(x, '%I%MP')
-            return ('DATE/TIME', x, new_x)
-        except ValueError:
+        except:
             pass
         return ('TEXT', x, len(x))
+
 
 def processColumn(header, data, dataFrame):
     columnNumber = len(header)
@@ -102,6 +106,7 @@ def processColumn(header, data, dataFrame):
         dfDataType = dataFrame.schema[i].dataType
         typeMap = {IntegerType: 'INTEGER(LONG)',
                    LongType: 'INTEGER(LONG)',
+                   DecimalType: 'INTEGER(LONG)',
                    DoubleType: 'REAL',
                    DateType: 'DATE/TIME',
                    TimestampType: 'DATE/TIME',
@@ -138,11 +143,13 @@ def processColumn(header, data, dataFrame):
         columnList.append(columnDict)
     return columnList, tableKeyList
 
+
 def writeToJson(fileName, dataDict):
     jsondict = json.dumps(dataDict)
     f = open(fileName[0:9]+'.json', 'w')
     f.write(jsondict)
     f.close()
+
 
 '''
 datetimef = open('datetimesample.txt', 'w')
@@ -161,6 +168,7 @@ for k, fileName in enumerate(fileNameList):
     print('++++++++++++++++++++++++++++++++++++++',k)
 datetimef.close()
 '''
+failF = open('failFile.txt', 'w')
 for file in fileInfoList:
     try:
         fileName = file[0]
@@ -171,8 +179,9 @@ for file in fileInfoList:
         dataDict['columns'] = columnList
         dataDict['key_column_candidates'] = tableKeyList
         writeToJson(fileName, dataDict)
-        print(fileName)
+        print('-----',fileName,'-----')
     except Exception as ex:
+        print('!!!!!', fileName, '!!!!!')
         # Get current system exception
         ex_type, ex_value, ex_traceback = sys.exc_info()
         # Extract unformatter stack traces as tuples
@@ -182,12 +191,12 @@ for file in fileInfoList:
         for trace in trace_back:
             stack_trace.append(
                 "File : %s , Line : %d, Func.Name : %s, Message : %s" % (trace[0], trace[1], trace[2], trace[3]))
-        failF = open('failFile.txt', 'w')
         failF.write("Fail %s----------------------------------------\n" % fileName)
         failF.write("Exception type : %s \n" % ex_type.__name__)
         failF.write("Exception message : %s \n" % ex_value)
         failF.write("Stack trace : %s \n" % stack_trace)
-        failF.close()
+        failF.write("----------------------------------------\n")
         pass
 
+failF.close()
 sc.stop()
