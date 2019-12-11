@@ -263,6 +263,8 @@ def is_car_make(instance_name):
 		return True
 
 	for i in sets:
+		#print(instance_name, similarity_percent(i, instance_name))
+		#print(similarity_percent(i, instance_name))
 		if similarity_percent(i.lower(), instance_name) >= 0.5:
 			return True
 	return False
@@ -368,7 +370,7 @@ for file in cluster:
 	dictPrediction["column_name"] = column_name
 	dictPrediction["semantic_types"] = {}
 	listPredTypes = []
-	#print('accept file', file)
+	print('accept file', file)
 
 	for i in range(len(rows)):
 		
@@ -425,7 +427,6 @@ for file in cluster:
 				label = "Other"
 			put_in_dict(label, dictPrediction["semantic_types"], instance_frequency)
 
-			
 		elif 'agency' in revised_col_name:
 		
 			
@@ -505,7 +506,6 @@ for file in cluster:
 			elif (is_subjects_in_school(instance_name)):
 				label = "Subjects_in_school"
 			else:
-				#print(instance_name)
 				label = "Other"
 			put_in_dict(label, dictPrediction["semantic_types"], instance_frequency)
 
@@ -631,9 +631,9 @@ all_types = ['Person_name', 'Business_name', 'City_agency', 'Neighborhood', 'Bui
 'City', 'LAT_LON_coordinates', 'School_name', 'Car_make', 'Vehicle_Type', 'Type_of_location', 'Websites', 'Color', \
 'College_University_names', 'Other']
 
-print('predcount', dictPredCount)
-print('manualcount', dictManualCount)
-print('matchcount', dictMatchCount)
+# print('predcount', dictPredCount)
+# print('manualcount', dictManualCount)
+# print('matchcount', dictMatchCount)
 list_percent = []
 list_recall = []
 for each in all_types:
@@ -653,5 +653,4 @@ for each in all_types:
 
 #print('list_percent', list_percent)
 #print('list_recall', list_recall)
-
 
