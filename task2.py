@@ -16,9 +16,21 @@ spark = SparkSession \
 	.getOrCreate()
 
 #read manually label file
-manually_label_filepath = '/home/yz5293/dict_of_manual_labels.json'
-with open(manually_label_filepath, 'r') as json_file:
-    manually_label_dict = json.load(json_file)
+task2_manual_labels_filepath = 'task2-manual-labels.json'
+
+with open(task2_manual_labels_filepath, 'r') as json_file:
+	task2_manual_labels = json.load(json_file)
+
+#leverage to one level dict
+list_per_file_dict = task2_manual_labels["actual_types"]
+manually_label_dict = {}
+for per_file_dict in list_per_file_dict:
+	filename = per_file_dict["column_name"]
+	filelabels_list = per_file_dict["manual_labels"]
+	per_file_list = []
+	for i in filelabels_list:
+		per_file_list.append(i["semantic_type"])
+	manually_label_dict[filename] = per_file_list
 
 cluster = sc.textFile('cluster3.txt').flatMap(lambda x : x.split(', ')).map(lambda x : x[1:-1]).collect()
 #cluster = ['5694-9szk.Business_Website_or_Other_URL.txt.gz', 'uwyv-629c.StreetName.txt.gz']
@@ -375,8 +387,7 @@ for file in cluster:
 	for i in range(len(rows)):
 		
 		instance_name, instance_frequency = get_instance_and_frequency(rows, i)
-		#print('out func', instance_name)
-
+		
 		if (instance_name is None):
 			label = "Other"
 			put_in_dict(label, dictPrediction["semantic_types"], instance_frequency)
@@ -594,7 +605,7 @@ for file in cluster:
 		new_dict['count'] = value
 		listPredTypes.append(key)
 		types_list.append(new_dict)
-	pc_pred_dict[file] = listPredTypes
+	pc_pred_dict[column_name] = listPredTypes
 	dictPrediction["semantic_types"] = types_list
 	json_file_path = 'project_task2/' + column_name + '.json'
 	with open(json_file_path, 'w') as json_file:
@@ -631,9 +642,6 @@ all_types = ['Person_name', 'Business_name', 'City_agency', 'Neighborhood', 'Bui
 'City', 'LAT_LON_coordinates', 'School_name', 'Car_make', 'Vehicle_Type', 'Type_of_location', 'Websites', 'Color', \
 'College_University_names', 'Other']
 
-# print('predcount', dictPredCount)
-# print('manualcount', dictManualCount)
-# print('matchcount', dictMatchCount)
 list_percent = []
 list_recall = []
 for each in all_types:
@@ -651,6 +659,6 @@ for each in all_types:
 	list_percent.append(matchcount/predcount)
 	list_recall.append(matchcount/manualcount)
 
-#print('list_percent', list_percent)
-#print('list_recall', list_recall)
+print('list_percent', list_percent)
+print('list_recall', list_recall)
 
