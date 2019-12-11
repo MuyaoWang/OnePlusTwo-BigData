@@ -16,7 +16,7 @@ spark = SparkSession \
 	.getOrCreate()
 
 #read manually label file
-manually_label_filepath = '/home/yz5293/task2_manually_label.json'
+manually_label_filepath = '/home/yz5293/dict_of_manual_labels.json'
 with open(manually_label_filepath, 'r') as json_file:
     manually_label_dict = json.load(json_file)
 
@@ -319,7 +319,7 @@ def is_websites(instance_name):
 		return False
 
 def is_building_classification(instance_name):
-
+	#print('in func', instance_name)
 	regex = re.compile(r'^[A-WYZ][0-9|MUWBHRS]-.*', re.IGNORECASE)
 	if(regex.match(instance_name)):
 		return True
@@ -368,11 +368,12 @@ for file in cluster:
 	dictPrediction["column_name"] = column_name
 	dictPrediction["semantic_types"] = {}
 	listPredTypes = []
-	print('accept file', file)
+	#print('accept file', file)
 
 	for i in range(len(rows)):
 		
 		instance_name, instance_frequency = get_instance_and_frequency(rows, i)
+		#print('out func', instance_name)
 
 		if (instance_name is None):
 			label = "Other"
@@ -424,9 +425,7 @@ for file in cluster:
 				label = "Other"
 			put_in_dict(label, dictPrediction["semantic_types"], instance_frequency)
 
-			#address zuihou
-			#city after agency
-
+			
 		elif 'agency' in revised_col_name:
 		
 			
@@ -506,6 +505,7 @@ for file in cluster:
 			elif (is_subjects_in_school(instance_name)):
 				label = "Subjects_in_school"
 			else:
+				#print(instance_name)
 				label = "Other"
 			put_in_dict(label, dictPrediction["semantic_types"], instance_frequency)
 
@@ -631,16 +631,27 @@ all_types = ['Person_name', 'Business_name', 'City_agency', 'Neighborhood', 'Bui
 'City', 'LAT_LON_coordinates', 'School_name', 'Car_make', 'Vehicle_Type', 'Type_of_location', 'Websites', 'Color', \
 'College_University_names', 'Other']
 
+print('predcount', dictPredCount)
+print('manualcount', dictManualCount)
+print('matchcount', dictMatchCount)
+list_percent = []
+list_recall = []
 for each in all_types:
 	matchcount = 0.0
 	if each not in dictMatchCount.keys():
-		print("%s\t%s = %.5f\t%s = %.5f\n" % (each, 'precison', matchcount, 'recall', matchcount))
+		#print("%s\t%s = %.5f\t%s = %.5f\n" % (each, 'precison', matchcount, 'recall', matchcount))
+		list_percent.append(matchcount)
+		list_recall.append(matchcount)
 		continue
 	else:
 		matchcount = float(dictMatchCount[each])
 	manualcount = dictManualCount[each]
 	predcount = dictPredCount[each]
-	print("%s\t%s = %.5f\t%s = %.5f\n" % (each, 'precison', matchcount/predcount, 'recall', matchcount/manualcount))
+	#print("%s\t%s = %.5f\t%s = %.5f\n" % (each, 'precison', matchcount/predcount, 'recall', matchcount/manualcount))
+	list_percent.append(matchcount/predcount)
+	list_recall.append(matchcount/manualcount)
 
+#print('list_percent', list_percent)
+#print('list_recall', list_recall)
 
 
