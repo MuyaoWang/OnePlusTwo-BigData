@@ -112,7 +112,7 @@ def processColumn(header, data, dataFrame):
         # The map for dataFrame dataType and the type we use for this task
         typeMap = {IntegerType: 'INTEGER(LONG)',
                    LongType: 'INTEGER(LONG)',
-                   DecimalType: 'INTEGER(LONG)',
+                   DecimalType: 'REAL',
                    DoubleType: 'REAL',
                    DateType: 'DATE/TIME',
                    TimestampType: 'DATE/TIME',
