@@ -3,6 +3,7 @@ import json
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import collections
 
 def combine_json(path,root_name,new_file_name):
     files = os.listdir(path)
@@ -65,6 +66,11 @@ for file in files:
     realCountList.append(realCount)
     datetimeCountList.append(datetimeCount)
     textCountList.append(textCount)
+
+print('Number of columns contain INTEGER(LONG) type:', sum(integerCountList))
+print('Number of columns contain REAL type:', sum(realCountList))
+print('Number of columns contain DATE/TIME type:', sum(datetimeCountList))
+print('Number of columns contain TEXT type:', sum(textCountList))
 
 plt.clf()
 plt.hist(integerCountList, bins=50, color='#607c8e')
@@ -171,6 +177,12 @@ semantic_type = ['Person_name', 'Business_name', 'City_agency', 'Neighborhood', 
                  'School_Levels', 'Borough', 'Subjects_in_school', 'Parks_Playgrounds', 'Zip_code', 'Address', 'Street_name',
                  'Phone_Number', 'City', 'LAT_LON_coordinates', 'School_name', 'Car_make', 'Vehicle_Type', 'Type_of_location',
                  'Websites', 'Color', 'College_University_names', 'Other']
+avg_origin_precision = sum(original_precision)/len(original_precision)
+avg_origin_recall = sum(original_recall)/len(original_recall)
+avg_opt_precision = sum(optimized_precision)/len(optimized_precision)
+avg_opt_recall = sum(optimized_recall)/len(optimized_recall)
+improve_precision = avg_opt_precision - avg_origin_precision
+improve_recall = avg_opt_recall - avg_origin_recall
 
 plt.clf()
 plt.figure(figsize=(10,8))
@@ -193,3 +205,21 @@ plt.ylabel('Recall')
 plt.xticks(rotation=-90, fontsize=5)
 plt.legend()
 plt.savefig('recall.png')
+
+files = os.listdir(path2)
+semanticTypeCountList = []
+for file in files:
+    with open(path2 + '/' + file) as f:
+        jsoncontent = json.load(f)
+    semanticTypeList = jsoncontent['semantic_types']
+    semanticTypeCountList.append(len(semanticTypeList))
+
+semanticDict = dict((x,semanticTypeCountList.count(x)) for x in semanticTypeCountList)
+semanticDict = collections.OrderedDict(sorted(semanticDict.items()))
+plt.clf()
+plt.bar(semanticDict.keys(), semanticDict.values(), color='#607c8e')
+plt.title('Prevalence of heterogeneous columns')
+plt.xlabel('Number of semantic types in the column')
+plt.ylabel('Count of columns')
+plt.grid(axis='y', alpha=0.75)
+plt.savefig('heterogeneous.png')
